@@ -1,5 +1,8 @@
 # Prometheus Amazon ECS discovery
 fork of : https://github.com/teralytics/prometheus-ecs-discovery
+form an older version of that repository
+my plan is to move to aws-go-sdk-v2 and integration the retry functionality along as cluster scrapping by filtering relevant clusters only. 
+
 
 Prometheus has native Amazon EC2 discovery capabilities, but it does
 not have the capacity to discover ECS instances that can be scraped

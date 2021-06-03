@@ -20,6 +20,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/aws/retry"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
@@ -715,16 +716,20 @@ func main() {
 	flag.Parse()
 	ctx := context.TODO()
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(*region), config.WithSharedConfigProfile(*awsProfile))
-
 	if err != nil {
 		log.Fatal(err)
 	}
-
+	// the retry implements a exponential jitter backoff
+	customRetry := retry.NewStandard(func(o *retry.StandardOptions) {
+		o.MaxAttempts = 10
+	})
 	// Create service client value configured for credentials from assumed role.
 	//Note: Not checking NextToken since test results are small dataset and do not need pagination.
 
 	if *roleArn != "" {
-		client := sts.NewFromConfig(cfg)
+		client := sts.NewFromConfig(cfg, func(o *sts.Options) {
+			o.Retryer = customRetry
+		})
 		provider := stscreds.NewAssumeRoleProvider(client, *roleArn)
 		cfg.Credentials = aws.NewCredentialsCache(provider)
 	}
@@ -733,10 +738,13 @@ func main() {
 		log.Fatalf("You Cannot pass cluster and cluster filter at same time.")
 	}
 	// Initialise AWS Service clients
-	svc := ecs.NewFromConfig(cfg)
-	//svc := ecs.New(sess)
-	svcec2 := ec2.NewFromConfig(cfg)
-	//svcec2 := ec2.New(sess)
+	svc := ecs.NewFromConfig(cfg, func(o *ecs.Options) {
+		o.Retryer = customRetry
+	})
+
+	svcec2 := ec2.NewFromConfig(cfg, func(o *ec2.Options) {
+		o.Retryer = customRetry
+	})
 
 	work := func() {
 		var clusters *ecs.ListClustersOutput

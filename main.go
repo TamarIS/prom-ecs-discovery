@@ -32,6 +32,7 @@ import (
 	"github.com/go-yaml/yaml"
 	"io/ioutil"
 	"log"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -53,10 +54,11 @@ type labels struct {
 
 // Docker label for enabling dynamic port detection
 const dynamicPortLabel = "PROMETHEUS_DYNAMIC_EXPORT"
+const defaultAwsRegion = "us-east-1"
 
 var cluster = flag.String("config.cluster", "", "name of the cluster to scrape")
 var clusterfilters = flag.String("config.cluster_filters", "", "commad delimited regex filters for clusters")
-var region = flag.String("config.region", "eu-west-1", "name of the region to scrape")
+var region = flag.String("config.region", defaultAwsRegion, "name of the region to scrape overiden by environment variable AWS_REGION if exists")
 var outFile = flag.String("config.write-to", "ecs_file_sd.yml", "path of file to write ECS service discovery information to")
 var interval = flag.Duration("config.scrape-interval", 60*time.Second, "interval at which to scrape the AWS API for ECS service discovery information")
 var times = flag.Int("config.scrape-times", 0, "how many times to scrape before exiting (0 = infinite)")
@@ -715,6 +717,11 @@ func TakeRole(c context.Context, api STSAssumeRoleAPI, input *sts.AssumeRoleInpu
 func main() {
 	flag.Parse()
 	ctx := context.TODO()
+	osEnv, isSet := os.LookupEnv("AWS_REGION")
+	if isSet {
+		*region = osEnv
+		log.Printf("prom-ecs-discovery on Region %s", *region)
+	}
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(*region), config.WithSharedConfigProfile(*awsProfile))
 	if err != nil {
 		log.Fatal(err)
@@ -752,7 +759,7 @@ func main() {
 
 		if *cluster != "" {
 			clustersList = append(clustersList, *cluster)
-			descClustOut, err := svc.DescribeClusters(context.TODO(), &ecs.DescribeClustersInput{
+			descClustOut, err := svc.DescribeClusters(ctx, &ecs.DescribeClustersInput{
 				Clusters: clustersList,
 				Include:  nil,
 			})
